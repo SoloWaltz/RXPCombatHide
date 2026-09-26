@@ -2,7 +2,7 @@
 ## Title: RestedXP |cff54a4fb战|r|cff3abdfc斗|r|cff27cefc中|r|cff14e0fd隐|r|cffff559a藏|r
 ## Notes: 进入战斗时自动把 RestedXP 窗口变淡或隐藏，脱离战斗后平滑恢复。4 档透明度 + 3 档快慢。独立补丁，不改动 RXPGuides 本体。命令：/rxphide（简写 /rxpch）
 ## Author: 西瓜烧鱼
-## Version: 4.3.0
+## Version: 4.4.0
 ## OptionalDeps: RXPGuides
 ## SavedVariables: RXPCombatHideDB
 ## X-Category: Interface Enhancements

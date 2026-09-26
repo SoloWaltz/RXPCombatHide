@@ -30,7 +30,7 @@
 local ADDON_NAME = ...
 ADDON_NAME = ADDON_NAME or "RXPCombatHide"
 
-local VERSION = "4.3.0"
+local VERSION = "4.4.0"
 
 -- ---------------------------------------------------------------- 档位与节奏
 
@@ -288,17 +288,39 @@ end
 
 -- 热路径：pcall 有开销，探测一次，可信的框架之后直连
 local untrusted = setmetatable({}, {__mode = "k"})
+-- 淡化时必须暂时关掉 IgnoreParentAlpha；完成恢复后则还原 RXP 原本的选择，
+-- 不能把箭头等窗口的继承策略永久改掉。
+local originalIgnoreParentAlpha = setmetatable({}, {__mode = "k"})
 
 local function SetAllAlpha(a)
     local list = CollectRects()
     for i = 1, #list do
         local frame, state = list[i], untrusted[list[i]]
         if state == nil then
-            untrusted[frame] = not (pcall(frame.SetAlpha, frame, a)
-                                    and pcall(frame.SetIgnoreParentAlpha, frame, false))
+            local alphaOK = pcall(frame.SetAlpha, frame, a)
+            local ignoreOK = true
+            if type(frame.SetIgnoreParentAlpha) == "function" then
+                if type(frame.GetIgnoreParentAlpha) == "function" then
+                    local gotValue, value = pcall(frame.GetIgnoreParentAlpha, frame)
+                    if gotValue then originalIgnoreParentAlpha[frame] = value end
+                end
+                ignoreOK = pcall(frame.SetIgnoreParentAlpha, frame, false)
+            end
+            untrusted[frame] = not (alphaOK and ignoreOK)
         elseif state == false then
             frame:SetAlpha(a)
-            frame:SetIgnoreParentAlpha(false)
+            if type(frame.SetIgnoreParentAlpha) == "function" then
+                frame:SetIgnoreParentAlpha(false)
+            end
+        end
+
+        -- alpha 回到正常值后，把淡化期间临时覆盖的继承规则交还给 RXP。
+        if a >= 0.999 and state ~= true and type(frame.SetIgnoreParentAlpha) == "function" then
+            local original = originalIgnoreParentAlpha[frame]
+            if original ~= nil then
+                pcall(frame.SetIgnoreParentAlpha, frame, original)
+                originalIgnoreParentAlpha[frame] = nil
+            end
         end
     end
 end
@@ -601,7 +623,12 @@ local function SetEnabled(on)
     SyncDB()
     DB.enabled = on and true or false
     SaveSettings()
-    if not DB.enabled then ShowNow(false) end
+    if not DB.enabled then
+        ShowNow(false)
+    elseif InCombatLockdown() then
+        -- 战斗中才打开插件时，下一次进战斗事件不会再触发；立即对齐当前状态。
+        HideNow(false)
+    end
 end
 
 -- ---------------------------------------------------------------- 命令
@@ -725,6 +752,14 @@ frame:SetScript("OnEvent", function(_, event, arg1)
             -- 战斗中重载/切场景：直接按档位归位，别经过"全亮"的中间态
             WhenReady(function() HideNow(false) end, 20)
         else
+            -- 过图会触发此事件；若上一场战斗刚在完全隐藏档结束加载，不能
+            -- 留下 showEnabled=false 而只把 alpha 调回 1，否者窗口会永久消失。
+            WhenReady(function()
+                RestoreOurShowFlag()
+                local p = GetProfile()
+                if p then ApplyShow(p.showEnabled ~= false) end
+                RealignFrames()
+            end, 20)
             SnapTo(1)
         end
 
